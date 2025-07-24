@@ -27,38 +27,34 @@ def _parse_function(example_proto):
         "PrevFireMask": tf.io.VarLenFeature(tf.float32),
         "erc": tf.io.VarLenFeature(tf.float32),
     }
+
     parsed_example = tf.io.parse_single_example(example_proto, feature_description)
 
-    def dense_or_default(sparse_tensor):
+    def reshape(sparse_tensor):
         dense = tf.sparse.to_dense(sparse_tensor, default_value=0.0)
-        return dense[0] if tf.size(dense) == 1 else dense
+        return tf.reshape(dense, [64, 64])
 
-    ndvi = dense_or_default(parsed_example['NDVI'])
-    tmmn = dense_or_default(parsed_example['tmmn'])
-    elevation = dense_or_default(parsed_example['elevation'])
-    population = dense_or_default(parsed_example['population'])
-    fire_mask = dense_or_default(parsed_example['FireMask'])
-    vs = dense_or_default(parsed_example['vs'])
-    pdsi = dense_or_default(parsed_example['pdsi'])
-    pr = dense_or_default(parsed_example['pr'])
-    tmmx = dense_or_default(parsed_example['tmmx'])
-    sph = dense_or_default(parsed_example['sph'])
-    th = dense_or_default(parsed_example['th'])
-    prev_fire_mask = dense_or_default(parsed_example['PrevFireMask'])
-    erc = dense_or_default(parsed_example['erc'])
+    ndvi = reshape(parsed_example['NDVI'])
+    tmmn = reshape(parsed_example['tmmn'])
+    elevation = reshape(parsed_example['elevation'])
+    population = reshape(parsed_example['population'])
+    fire_mask = reshape(parsed_example['FireMask'])
+    vs = reshape(parsed_example['vs'])
+    pdsi = reshape(parsed_example['pdsi'])
+    pr = reshape(parsed_example['pr'])
+    tmmx = reshape(parsed_example['tmmx'])
+    sph = reshape(parsed_example['sph'])
+    th = reshape(parsed_example['th'])
+    prev_fire_mask = reshape(parsed_example['PrevFireMask'])
+    erc = reshape(parsed_example['erc'])
 
-    # You may want to reshape fire_mask and prev_fire_mask to (256,256) if they represent masks
-    fire_mask = tf.reshape(fire_mask, [64, 64])
-    prev_fire_mask = tf.reshape(prev_fire_mask, [64, 64])
-
-
+    # Stack into tensor for modeling
     inputs = tf.stack([
         ndvi, tmmn, elevation, population, vs,
         pdsi, pr, tmmx, sph, th, erc
-    ])
+    ], axis=0)  # Shape: (11, 64, 64)
 
     return inputs, fire_mask, prev_fire_mask
-
 
 
 # Create dataset pipeline
@@ -70,18 +66,40 @@ dataset = dataset.prefetch(tf.data.AUTOTUNE)
 # Visualize some samples
 for batch in dataset.take(1):
     inputs_batch, fire_masks_batch, prev_fire_masks_batch = batch
-    print("Input features shape:", inputs_batch.shape)         # (batch_size, feature_count)
-    print("FireMask shape:", fire_masks_batch.shape)           # (batch_size, 256, 256)
-    print("PrevFireMask shape:", prev_fire_masks_batch.shape)  # (batch_size, 256, 256)
-    
-    # Plot first fire mask
-    plt.figure(figsize=(8, 4))
-    for i in range(inputs_batch.shape[0]):
-        plt.subplot(1, inputs_batch.shape[0], i+1)
-        plt.imshow(fire_masks_batch[i].numpy(), cmap='hot')
-        plt.title(f'FireMask #{i}')
+
+    print("Inputs batch shape:", inputs_batch.shape)  # (B, 11, 64, 64)
+    print("FireMask shape:", fire_masks_batch.shape)  # (B, 64, 64)
+
+    # Plot the input features for the first sample in batch
+    sample_inputs = inputs_batch[0]  # shape: (11, 64, 64)
+    feature_names = [
+        "NDVI", "tmmn", "elevation", "population", "vs",
+        "pdsi", "pr", "tmmx", "sph", "th", "erc"
+    ]
+
+    plt.figure(figsize=(15, 6))
+    for i in range(11):
+        plt.subplot(2, 6, i + 1)
+        plt.imshow(sample_inputs[i].numpy(), cmap='viridis')
+        plt.title(feature_names[i])
         plt.axis('off')
+    plt.tight_layout()
     plt.show()
+
+    # Also show FireMask and PrevFireMask
+    plt.figure(figsize=(6, 3))
+    plt.subplot(1, 2, 1)
+    plt.imshow(fire_masks_batch[0].numpy(), cmap='hot')
+    plt.title("FireMask")
+    plt.axis('off')
+
+    plt.subplot(1, 2, 2)
+    plt.imshow(prev_fire_masks_batch[0].numpy(), cmap='hot')
+    plt.title("PrevFireMask")
+    plt.axis('off')
+    plt.tight_layout()
+    plt.show()
+
 
 '''
 import tensorflow as tf
